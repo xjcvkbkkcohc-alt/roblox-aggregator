@@ -37,10 +37,7 @@ def aggregate_and_post_stats():
     print(f"AGGREGATE_INTERVAL = {AGGREGATE_INTERVAL}", flush=True)
     print(f"STALE_THRESHOLD = {STALE_THRESHOLD}", flush=True)
     sys.stdout.flush()
-    
-    if "1429005345841483776" in WEBHOOK_URL:
-        print("❌❌❌ CRITICAL ERROR: DEFAULT WEBHOOK STILL IN CODE!", flush=True)
-        return
+
         
     iteration = 0
     
