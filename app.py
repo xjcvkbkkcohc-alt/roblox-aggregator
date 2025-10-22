@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify
 
 # --- Enhanced logging setup ---
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.DEBUG,  # ⬅️ Изменено на DEBUG
     format='%(asctime)s - %(levelname)s - %(message)s',
     stream=sys.stdout,
     force=True
@@ -17,13 +17,13 @@ logging.basicConfig(
 logging.getLogger('werkzeug').setLevel(logging.INFO)
 
 app = Flask(__name__)
-app.logger.setLevel(logging.INFO)
+app.logger.setLevel(logging.DEBUG)
 
 # --- Global variables ---
 server_data = {}
 data_lock = threading.Lock() 
-AGGREGATE_INTERVAL = 30   # Check every 30 seconds
-STALE_THRESHOLD = 360     # Data older than 6 minutes is stale
+AGGREGATE_INTERVAL = 30
+STALE_THRESHOLD = 360
 
 def aggregate_and_post_stats():
     """
@@ -32,20 +32,23 @@ def aggregate_and_post_stats():
     
     WEBHOOK_URL = "https://discord.com/api/webhooks/1429005345841483776/rxdR0M7CPVXjSE1H4Zw8KvuJ9BIoL85vRRr0bwRVkJ5AL96li0ku2q21xwZOTEXmksju"
     
+    print(f"\n🔥🔥🔥 AGGREGATOR THREAD STARTING 🔥🔥🔥", flush=True)
+    print(f"WEBHOOK_URL = {WEBHOOK_URL}", flush=True)
+    print(f"AGGREGATE_INTERVAL = {AGGREGATE_INTERVAL}", flush=True)
+    print(f"STALE_THRESHOLD = {STALE_THRESHOLD}", flush=True)
+    sys.stdout.flush()
+    
     if "1429005345841483776" in WEBHOOK_URL:
-        print("⚠️ CRITICAL ERROR: You haven't inserted your webhook URL in app.py!", flush=True)
-        logging.critical("CRITICAL ERROR: You haven't inserted your webhook URL in app.py!")
-        sys.stdout.flush()
+        print("❌❌❌ CRITICAL ERROR: DEFAULT WEBHOOK STILL IN CODE!", flush=True)
         return
         
-    print(f"✅ [STARTUP] Aggregator thread started. Checking every {AGGREGATE_INTERVAL}s", flush=True)
-    logging.info(f"Aggregator: Thread started. Interval: {AGGREGATE_INTERVAL}s")
-    sys.stdout.flush()
-
+    iteration = 0
+    
     while True:
-        print(f"\n{'='*60}", flush=True)
-        print(f"[AGGREGATOR] 📊 Starting statistics calculation...", flush=True)
-        logging.info("Aggregator: Starting statistics calculation...")
+        iteration += 1
+        print(f"\n{'#'*80}", flush=True)
+        print(f"### ITERATION {iteration} - {time.strftime('%H:%M:%S')} ###", flush=True)
+        print(f"{'#'*80}", flush=True)
         sys.stdout.flush()
         
         total_players = 0
@@ -55,19 +58,34 @@ def aggregate_and_post_stats():
         
         universes_to_remove = []
         current_time = time.time()
+        
+        print(f"[DEBUG] current_time = {current_time}", flush=True)
+        print(f"[DEBUG] Acquiring data_lock...", flush=True)
 
         try:
             with data_lock:
+                print(f"[DEBUG] data_lock acquired!", flush=True)
+                print(f"[DEBUG] server_data keys: {list(server_data.keys())}", flush=True)
+                print(f"[DEBUG] len(server_data) = {len(server_data)}", flush=True)
+                
                 total_games = len(server_data)
                 
-                print(f"[AGGREGATOR] 🔍 Current server_data has {total_games} universes", flush=True)
+                print(f"[AGGREGATOR] 🔍 Total universes in server_data: {total_games}", flush=True)
+                
+                if total_games == 0:
+                    print(f"[DEBUG] ⚠️ server_data is EMPTY! No data to process.", flush=True)
                 
                 for universe_id, jobs in server_data.items():
+                    print(f"\n[DEBUG] Processing universe_id: {universe_id}", flush=True)
+                    print(f"[DEBUG] Number of jobs in this universe: {len(jobs)}", flush=True)
+                    
                     jobs_to_remove = []
                     for job_id, data in jobs.items():
                         age = current_time - data['timestamp']
+                        print(f"[DEBUG]   Job {job_id[:8]}... age={age:.1f}s, count={data.get('count', 0)}", flush=True)
+                        
                         if age > STALE_THRESHOLD:
-                            print(f"[AGGREGATOR] ⏰ Removing stale job {job_id[:8]}... (age: {age:.0f}s)", flush=True)
+                            print(f"[DEBUG]   ⏰ JOB IS STALE (age {age:.1f}s > threshold {STALE_THRESHOLD}s)", flush=True)
                             jobs_to_remove.append(job_id)
                         else:
                             player_count = data.get('count', 0)
@@ -75,24 +93,35 @@ def aggregate_and_post_stats():
                             active_servers_count += 1
                             if player_count > highest_player_count:
                                 highest_player_count = player_count
-                            print(f"[AGGREGATOR] ✓ Universe {universe_id}, Job {job_id[:8]}..., Players: {player_count}", flush=True)
+                            print(f"[DEBUG]   ✅ JOB IS ACTIVE - Adding {player_count} players", flush=True)
                     
+                    print(f"[DEBUG] Jobs to remove from universe {universe_id}: {len(jobs_to_remove)}", flush=True)
                     for job_id in jobs_to_remove:
                         del server_data[universe_id][job_id]
                 
                     if not server_data[universe_id]:
+                        print(f"[DEBUG] Universe {universe_id} is now empty, marking for removal", flush=True)
                         universes_to_remove.append(universe_id)
 
                 for universe_id in universes_to_remove:
-                    print(f"[AGGREGATOR] 🗑️ Removing empty universe {universe_id}", flush=True)
+                    print(f"[DEBUG] 🗑️ Removing empty universe {universe_id}", flush=True)
                     del server_data[universe_id]
+                
+                print(f"[DEBUG] data_lock released!", flush=True)
 
-            print(f"[AGGREGATOR] 📈 Summary: Active Servers={active_servers_count}, Total Games={total_games}, Total Players={total_players}, Max={highest_player_count}", flush=True)
+            print(f"\n{'='*80}", flush=True)
+            print(f"[AGGREGATOR] 📊 FINAL STATS:", flush=True)
+            print(f"  - Active Servers: {active_servers_count}", flush=True)
+            print(f"  - Total Games: {total_games}", flush=True)
+            print(f"  - Total Players: {total_players}", flush=True)
+            print(f"  - Highest Player Count: {highest_player_count}", flush=True)
+            print(f"{'='*80}", flush=True)
+            sys.stdout.flush()
             
             # --- Send statistics to Discord ---
             if active_servers_count > 0:
-                print(f"[AGGREGATOR] 📤 Sending to Discord...", flush=True)
-                logging.info(f"Aggregator: Sending: Games={total_games}, Players={total_players}, Max={highest_player_count}")
+                print(f"\n[AGGREGATOR] ✅ CONDITION MET: active_servers_count > 0", flush=True)
+                print(f"[AGGREGATOR] 📤 Preparing Discord payload...", flush=True)
 
                 payload = {
                     "embeds": [{
@@ -107,22 +136,45 @@ def aggregate_and_post_stats():
                         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
                     }]
                 }
-                response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
-                print(f"[AGGREGATOR] ✅ Discord webhook sent! Status: {response.status_code}", flush=True)
-                if response.status_code not in [200, 204]:
-                    print(f"[AGGREGATOR] ⚠️ Unexpected response: {response.text}", flush=True)
+                
+                print(f"[DEBUG] Payload created: {payload}", flush=True)
+                print(f"[DEBUG] Sending POST request to: {WEBHOOK_URL}", flush=True)
+                sys.stdout.flush()
+                
+                try:
+                    response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
+                    print(f"[AGGREGATOR] 📬 Discord Response Status: {response.status_code}", flush=True)
+                    print(f"[DEBUG] Response headers: {response.headers}", flush=True)
+                    print(f"[DEBUG] Response text: {response.text}", flush=True)
+                    
+                    if response.status_code in [200, 204]:
+                        print(f"[AGGREGATOR] ✅✅✅ WEBHOOK SENT SUCCESSFULLY! ✅✅✅", flush=True)
+                    else:
+                        print(f"[AGGREGATOR] ⚠️⚠️⚠️ UNEXPECTED STATUS CODE: {response.status_code}", flush=True)
+                        
+                except requests.exceptions.Timeout:
+                    print(f"[AGGREGATOR] ❌ REQUEST TIMEOUT after 10 seconds!", flush=True)
+                except requests.exceptions.ConnectionError as e:
+                    print(f"[AGGREGATOR] ❌ CONNECTION ERROR: {e}", flush=True)
+                except Exception as e:
+                    print(f"[AGGREGATOR] ❌ REQUEST EXCEPTION: {e}", flush=True)
+                    
+                sys.stdout.flush()
             
             else:
-                print(f"[AGGREGATOR] ⏭️ No active servers, skipping Discord send.", flush=True)
-                logging.info("Aggregator: No active servers, send skipped.")
+                print(f"\n[AGGREGATOR] ⏭️ CONDITION NOT MET: active_servers_count = {active_servers_count}", flush=True)
+                print(f"[AGGREGATOR] ⏭️ NO DATA TO SEND - Skipping Discord webhook", flush=True)
 
         except Exception as e:
-            print(f"[AGGREGATOR ERROR] ❌ {e}", flush=True)
-            logging.error(f"Aggregator: Error in main loop: {e}", exc_info=True)
+            print(f"\n❌❌❌ AGGREGATOR CRASHED ❌❌❌", flush=True)
+            print(f"[AGGREGATOR ERROR] Exception: {e}", flush=True)
+            print(f"[DEBUG] Exception type: {type(e)}", flush=True)
+            import traceback
+            print(f"[DEBUG] Traceback:\n{traceback.format_exc()}", flush=True)
+            sys.stdout.flush()
 
-        print(f"[AGGREGATOR] 😴 Sleeping for {AGGREGATE_INTERVAL} seconds...", flush=True)
-        print(f"{'='*60}\n", flush=True)
-        logging.info(f"Aggregator: Sleeping for {AGGREGATE_INTERVAL} seconds...")
+        print(f"\n[AGGREGATOR] 😴 Sleeping for {AGGREGATE_INTERVAL} seconds...", flush=True)
+        print(f"{'#'*80}\n", flush=True)
         sys.stdout.flush()
         time.sleep(AGGREGATE_INTERVAL) 
 
@@ -143,39 +195,62 @@ def handle_heartbeat():
         job_id = data.get('jobId')
         player_count = data.get('playerCount')
 
+        print(f"\n[HEARTBEAT] 📥 Incoming request", flush=True)
+        print(f"[DEBUG] Raw data: {data}", flush=True)
+        print(f"[DEBUG] universe_id = {universe_id}", flush=True)
+        print(f"[DEBUG] job_id = {job_id}", flush=True)
+        print(f"[DEBUG] player_count = {player_count}", flush=True)
+
         if not all([universe_id, job_id, player_count is not None]):
-            print(f"[HEARTBEAT] ⚠️ Incomplete data received: {data}", flush=True)
-            logging.warning(f"Heartbeat: Incomplete data received: {data}")
+            print(f"[HEARTBEAT] ⚠️ VALIDATION FAILED - Missing data", flush=True)
             return jsonify({"error": "Missing data"}), 400
 
         current_time = time.time()
+        print(f"[DEBUG] current_time = {current_time}", flush=True)
+        print(f"[DEBUG] Acquiring data_lock for write...", flush=True)
 
         with data_lock:
+            print(f"[DEBUG] data_lock acquired for write!", flush=True)
+            
             if universe_id not in server_data:
+                print(f"[DEBUG] Creating new universe entry: {universe_id}", flush=True)
                 server_data[universe_id] = {}
+                
             server_data[universe_id][job_id] = {
                 "count": int(player_count),
                 "timestamp": current_time
             }
+            
+            print(f"[DEBUG] Data saved! server_data now has {len(server_data)} universes", flush=True)
+            print(f"[DEBUG] Universe {universe_id} has {len(server_data[universe_id])} jobs", flush=True)
+            print(f"[DEBUG] data_lock released!", flush=True)
         
-        print(f"[HEARTBEAT] ✓ Received: Universe={universe_id}, Job={job_id[:8]}..., Players={player_count}", flush=True)
+        print(f"[HEARTBEAT] ✅ Success: Universe={universe_id}, Job={job_id[:8]}..., Players={player_count}", flush=True)
+        sys.stdout.flush()
         
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
-        print(f"[HEARTBEAT ERROR] ❌ {e}", flush=True)
-        logging.error(f"Heartbeat: Error processing: {e}", exc_info=True)
+        print(f"\n❌❌❌ HEARTBEAT CRASHED ❌❌❌", flush=True)
+        print(f"[HEARTBEAT ERROR] Exception: {e}", flush=True)
+        import traceback
+        print(f"[DEBUG] Traceback:\n{traceback.format_exc()}", flush=True)
+        sys.stdout.flush()
         return jsonify({"error": "Internal server error"}), 500
 
 # --- Start server ---
 if __name__ == '__main__':
-    print("\n" + "="*60, flush=True)
-    print("🚀 [STARTUP] Starting Obsidian Aggregator Service", flush=True)
-    print("="*60 + "\n", flush=True)
+    print("\n" + "="*80, flush=True)
+    print("🚀🚀🚀 STARTING OBSIDIAN AGGREGATOR SERVICE 🚀🚀🚀", flush=True)
+    print("="*80 + "\n", flush=True)
     sys.stdout.flush()
     
-    # Start statistics collection thread
-    threading.Thread(target=aggregate_and_post_stats, daemon=True).start()
+    print(f"[STARTUP] Creating aggregator thread...", flush=True)
+    aggregator_thread = threading.Thread(target=aggregate_and_post_stats, daemon=True)
+    print(f"[STARTUP] Starting aggregator thread...", flush=True)
+    aggregator_thread.start()
+    print(f"[STARTUP] Aggregator thread started! Thread alive: {aggregator_thread.is_alive()}", flush=True)
+    sys.stdout.flush()
     
     port = int(os.environ.get('PORT', 10000))
     print(f"[STARTUP] 🌐 Starting Flask on port {port}", flush=True)
