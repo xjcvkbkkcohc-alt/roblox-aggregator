@@ -3,56 +3,52 @@ import requests
 import threading
 import time
 import logging
-import sys # <--- ДОБАВЛЕНО
+import sys 
 from flask import Flask, request, jsonify
 
-# --- Настройка ---
-# ДОБАВЛЕНО 'stream=sys.stdout', чтобы логи 100% шли в консоль Render
+# --- Настройка логов ---
 logging.basicConfig(
     level=logging.INFO, 
     format='%(asctime)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
+    stream=sys.stdout # Гарантирует вывод в консоль Render
 )
 
 app = Flask(__name__)
 
-# --- Глобальные переменные (без изменений) ---
+# --- Глобальные переменные ---
 server_data = {}
 data_lock = threading.Lock() 
+AGGREGATE_INTERVAL = 300  # 5 минут
+STALE_THRESHOLD = 600   # 10 минут
 
-# --- Настройки интервалов (без изменений) ---
-AGGREGATE_INTERVAL = 300 
-STALE_THRESHOLD = 600 
-
-def keep_alive():
-    while True:
-        time.sleep(600)  
-        try:
-            render_app_url = os.environ.get('RENDER_EXTERNAL_URL')
-            if render_app_url:
-                logging.info("Keep-alive: отправляю пинг...")
-                print("Keep-alive: отправляю пинг...") # <--- ДОБАВЛЕНО
-                requests.get(render_app_url, timeout=15)
-        except requests.RequestException as e:
-            logging.error(f"Keep-alive: не удалось отправить пинг: {e}")
-            print(f"Keep-alive: не удалось отправить пинг: {e}") # <--- ДОБАВЛЕНО
+# <--- УДАЛЕНО ---
+# Функция keep_alive() была полностью удалена
+# --- ---
 
 def aggregate_and_post_stats():
     """
-    Главная функция. Каждые 5 минут собирает статистику и отправляет в Discord.
+    Каждые 5 минут собирает статистику и отправляет в Discord.
     """
-    WEBHOOK_URL = os.environ.get('AGGREGATE_WEBHOOK_URL')
-    if not WEBHOOK_URL:
-        # ЭТО ВАЖНО!
-        logging.critical("КРИТИЧЕСКАЯ ОШИБКА: 'AGGREGATE_WEBHOOK_URL' не установлена! Поток статистики не запустится.")
-        print("КРИТИЧЕСКАЯ ОШИБКА: 'AGGREGATE_WEBHOOK_URL' не установлена! Поток статистики не запустится.")
-        return # <-- Поток умирает здесь, если URL не найден
+    
+    # --- !! ИЗМЕНЕНИЕ !! ---
+    #
+    # ВСТАВЬ СЮДА СВОЮ РЕАЛЬНУЮ ССЫЛКУ НА ВЕБХУК
+    #
+    WEBHOOK_URL = "https://discord.com/api/webhooks/1429005345841483776/rxdR0M7CPVXjSE1H4Zw8KvuJ9BIoL85vRRr0bwRVkJ5AL96li0ku2q21xwZOTEXmksju"
+    
+    # Проверка, что ты вставил свою ссылку
+    if "TVOYA_REALNAYA_SSYLKA_ZDES" in WEBHOOK_URL:
+        logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Ты не вставил свою ссылку в app.py!")
+        print("КРИТИЧЕСКАЯ ОШИБКА: Ты не вставил свою ссылку в app.py!")
+        return # Остановить этот поток
+        
+    logging.info(f"Агрегатор: Поток запущен. URL жестко закодирован.")
+    print(f"Агрегатор: Поток запущен. URL жестко закодирован.")
+    #
+    # --- Конец изменения ---
 
-    logging.info("Агрегатор: Поток запущен. Первая проверка... (URL вебхука найден)")
-    print("Агрегатор: Поток запущен. Первая проверка... (URL вебхука найден)")
 
     while True:
-        # --- ЛОГИКА ВЫПОЛНЯЕТСЯ СНАЧАЛА ---
         logging.info("Агрегатор: Начинаю подсчет статистики...")
         print("Агрегатор: Начинаю подсчет статистики...")
         
@@ -82,16 +78,15 @@ def aggregate_and_post_stats():
                     
                     for job_id in jobs_to_remove:
                         del server_data[universe_id][job_id]
-                        logging.info(f"Агрегатор: Удален мертвый сервер {job_id}")
                 
                     if not server_data[universe_id]:
                         universes_to_remove.append(universe_id)
 
                 for universe_id in universes_to_remove:
                     del server_data[universe_id]
-                    logging.info(f"Агрегатор: Удалена мертвая игра {universe_id}")
 
             # --- Отправка статистики в Discord ---
+            # Отправляем, только если есть хотя бы один сервер
             if active_servers_count > 0:
                 logging.info(f"Агрегатор: Отправка: Игр={total_games}, Игроков={total_players}, Макс.={highest_player_count}")
                 print(f"Агрегатор: Отправка: Игр={total_games}, Игроков={total_players}, Макс.={highest_player_count}")
@@ -115,12 +110,12 @@ def aggregate_and_post_stats():
                 logging.info("Агрегатор: Нет активных серверов, отправка пропущена.")
                 print("Агрегатор: Нет активных серверов, отправка пропущена.")
 
+
         except Exception as e:
             logging.error(f"Агрегатор: Ошибка в главном цикле: {e}", exc_info=True)
             print(f"Агрегатор: Ошибка в главном цикле: {e}")
 
-        # --- ТЕПЕРЬ СЕРВЕР ЗАСЫПАЕТ ---
-        # time.sleep() был перенесен ИЗ НАЧАЛА в КОНЕЦ цикла
+        # Сервер засыпает на 5 минут (300 секунд)
         logging.info(f"Агрегатор: Засыпаю на {AGGREGATE_INTERVAL} секунд...")
         print(f"Агрегатор: Засыпаю на {AGGREGATE_INTERVAL} секунд...")
         time.sleep(AGGREGATE_INTERVAL) 
@@ -128,10 +123,14 @@ def aggregate_and_post_stats():
 
 @app.route('/')
 def home():
+    """Маршрут для проверки, что сервер жив."""
     return "Obsidian Aggregator Service is running!", 200
 
 @app.route('/heartbeat', methods=['POST'])
 def handle_heartbeat():
+    """
+    Принимает "пульс" от игровых серверов Roblox.
+    """
     try:
         data = request.json
         universe_id = data.get('universeId')
@@ -147,14 +146,10 @@ def handle_heartbeat():
         with data_lock:
             if universe_id not in server_data:
                 server_data[universe_id] = {}
-            
             server_data[universe_id][job_id] = {
                 "count": int(player_count),
                 "timestamp": current_time
             }
-        
-        # Раскомментируй, если хочешь видеть КАЖДЫЙ пинг в логах (будет спам)
-        # logging.info(f"Heartbeat: Пинг от {job_id}, игроки: {player_count}")
         
         return jsonify({"status": "ok"}), 200
 
@@ -162,9 +157,16 @@ def handle_heartbeat():
         logging.error(f"Heartbeat: Ошибка при обработке: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
 
-# --- Запуск сервера (без изменений) ---
+# --- Запуск сервера ---
 if __name__ == '__main__':
-    threading.Thread(target=keep_alive, daemon=True).start()
+    # <--- УДАЛЕНО ---
+    # Поток keep_alive() больше не запускается
+    # threading.Thread(target=keep_alive, daemon=True).start()
+    # --- ---
+    
+    # Запускаем поток сбора статистики
     threading.Thread(target=aggregate_and_post_stats, daemon=True).start()
-    port = int(os.environ.get('PORT', 5000))
+    
+    # Эта переменная окружения (PORT) нужна самому Render, ее убирать нельзя
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
