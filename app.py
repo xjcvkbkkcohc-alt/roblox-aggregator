@@ -37,7 +37,7 @@ def aggregate_and_post_stats():
     WEBHOOK_URL = "https://discord.com/api/webhooks/1429005345841483776/rxdR0M7CPVXjSE1H4Zw8KvuJ9BIoL85vRRr0bwRVkJ5AL96li0ku2q21xwZOTEXmksju"
     
     # Проверка, что ты вставил свою ссылку
-    if "TVOYA_REALNAYA_SSYLKA_ZDES" in WEBHOOK_URL:
+    if "https://discord.com/api/webhooks/1429005345841483776/rxdR0M7CPVXjSE1H4Zw8KvuJ9BIoL85vRRr0bwRVkJ5AL96li0ku2q21xwZOTEXmksju" in WEBHOOK_URL:
         logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Ты не вставил свою ссылку в app.py!")
         print("КРИТИЧЕСКАЯ ОШИБКА: Ты не вставил свою ссылку в app.py!")
         return # Остановить этот поток
