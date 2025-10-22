@@ -6,51 +6,47 @@ import logging
 import sys 
 from flask import Flask, request, jsonify
 
-# --- Настройка логов ---
+# --- Enhanced logging setup ---
 logging.basicConfig(
     level=logging.INFO, 
     format='%(asctime)s - %(levelname)s - %(message)s',
-    stream=sys.stdout # Гарантирует вывод в консоль Render
+    stream=sys.stdout,
+    force=True  # Force override existing loggers
 )
 
-app = Flask(__name__)
+# Ensure Flask's logger also outputs
+logging.getLogger('werkzeug').setLevel(logging.INFO)
 
-# --- Глобальные переменные ---
+app = Flask(__name__)
+app.logger.setLevel(logging.INFO)
+
+# --- Global variables ---
 server_data = {}
 data_lock = threading.Lock() 
-AGGREGATE_INTERVAL = 300  # 5 минут
-STALE_THRESHOLD = 600   # 10 минут
-
-# <--- УДАЛЕНО ---
-# Функция keep_alive() была полностью удалена
-# --- ---
+AGGREGATE_INTERVAL = 300  # 5 minutes
+STALE_THRESHOLD = 600   # 10 minutes
 
 def aggregate_and_post_stats():
     """
-    Каждые 5 минут собирает статистику и отправляет в Discord.
+    Every 5 minutes collects statistics and sends to Discord.
     """
     
-    # --- !! ИЗМЕНЕНИЕ !! ---
-    #
-    # ВСТАВЬ СЮДА СВОЮ РЕАЛЬНУЮ ССЫЛКУ НА ВЕБХУК
-    #
     WEBHOOK_URL = "https://discord.com/api/webhooks/1429005345841483776/rxdR0M7CPVXjSE1H4Zw8KvuJ9BIoL85vRRr0bwRVkJ5AL96li0ku2q21xwZOTEXmksju"
     
-    # Проверка, что ты вставил свою ссылку
-    if "https://discord.com/api/webhooks/1429005345841483776/rxdR0M7CPVXjSE1H4Zw8KvuJ9BIoL85vRRr0bwRVkJ5AL96li0ku2q21xwZOTEXmksju" in WEBHOOK_URL:
-        logging.critical("КРИТИЧЕСКАЯ ОШИБКА: Ты не вставил свою ссылку в app.py!")
-        print("КРИТИЧЕСКАЯ ОШИБКА: Ты не вставил свою ссылку в app.py!")
-        return # Остановить этот поток
+    if "1429005345841483776" in WEBHOOK_URL:
+        print("CRITICAL ERROR: You haven't inserted your webhook URL in app.py!", flush=True)
+        logging.critical("CRITICAL ERROR: You haven't inserted your webhook URL in app.py!")
+        sys.stdout.flush()
+        return
         
-    logging.info(f"Агрегатор: Поток запущен. URL жестко закодирован.")
-    print(f"Агрегатор: Поток запущен. URL жестко закодирован.")
-    #
-    # --- Конец изменения ---
-
+    print(f"[STARTUP] Aggregator thread started. Webhook configured.", flush=True)
+    logging.info(f"Aggregator: Thread started. URL hardcoded.")
+    sys.stdout.flush()
 
     while True:
-        logging.info("Агрегатор: Начинаю подсчет статистики...")
-        print("Агрегатор: Начинаю подсчет статистики...")
+        print(f"\n[AGGREGATOR] Starting statistics calculation...", flush=True)
+        logging.info("Aggregator: Starting statistics calculation...")
+        sys.stdout.flush()
         
         total_players = 0
         total_games = 0
@@ -63,6 +59,8 @@ def aggregate_and_post_stats():
         try:
             with data_lock:
                 total_games = len(server_data)
+                
+                print(f"[AGGREGATOR] Current server_data has {total_games} universes", flush=True)
                 
                 for universe_id, jobs in server_data.items():
                     jobs_to_remove = []
@@ -85,11 +83,10 @@ def aggregate_and_post_stats():
                 for universe_id in universes_to_remove:
                     del server_data[universe_id]
 
-            # --- Отправка статистики в Discord ---
-            # Отправляем, только если есть хотя бы один сервер
+            # --- Send statistics to Discord ---
             if active_servers_count > 0:
-                logging.info(f"Агрегатор: Отправка: Игр={total_games}, Игроков={total_players}, Макс.={highest_player_count}")
-                print(f"Агрегатор: Отправка: Игр={total_games}, Игроков={total_players}, Макс.={highest_player_count}")
+                print(f"[AGGREGATOR] Sending: Games={total_games}, Players={total_players}, Max={highest_player_count}", flush=True)
+                logging.info(f"Aggregator: Sending: Games={total_games}, Players={total_players}, Max={highest_player_count}")
 
                 payload = {
                     "embeds": [{
@@ -104,32 +101,32 @@ def aggregate_and_post_stats():
                         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
                     }]
                 }
-                requests.post(WEBHOOK_URL, json=payload, timeout=10)
+                response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
+                print(f"[AGGREGATOR] Discord webhook response: {response.status_code}", flush=True)
             
             else:
-                logging.info("Агрегатор: Нет активных серверов, отправка пропущена.")
-                print("Агрегатор: Нет активных серверов, отправка пропущена.")
-
+                print(f"[AGGREGATOR] No active servers, skipping send.", flush=True)
+                logging.info("Aggregator: No active servers, send skipped.")
 
         except Exception as e:
-            logging.error(f"Агрегатор: Ошибка в главном цикле: {e}", exc_info=True)
-            print(f"Агрегатор: Ошибка в главном цикле: {e}")
+            print(f"[AGGREGATOR ERROR] {e}", flush=True)
+            logging.error(f"Aggregator: Error in main loop: {e}", exc_info=True)
 
-        # Сервер засыпает на 5 минут (300 секунд)
-        logging.info(f"Агрегатор: Засыпаю на {AGGREGATE_INTERVAL} секунд...")
-        print(f"Агрегатор: Засыпаю на {AGGREGATE_INTERVAL} секунд...")
+        print(f"[AGGREGATOR] Sleeping for {AGGREGATE_INTERVAL} seconds...\n", flush=True)
+        logging.info(f"Aggregator: Sleeping for {AGGREGATE_INTERVAL} seconds...")
+        sys.stdout.flush()
         time.sleep(AGGREGATE_INTERVAL) 
 
 
 @app.route('/')
 def home():
-    """Маршрут для проверки, что сервер жив."""
+    """Route to check server is alive."""
     return "Obsidian Aggregator Service is running!", 200
 
 @app.route('/heartbeat', methods=['POST'])
 def handle_heartbeat():
     """
-    Принимает "пульс" от игровых серверов Roblox.
+    Receives "heartbeat" from Roblox game servers.
     """
     try:
         data = request.json
@@ -138,7 +135,8 @@ def handle_heartbeat():
         player_count = data.get('playerCount')
 
         if not all([universe_id, job_id, player_count is not None]):
-            logging.warning(f"Heartbeat: Получены неполные данные: {data}")
+            print(f"[HEARTBEAT] Incomplete data received: {data}", flush=True)
+            logging.warning(f"Heartbeat: Incomplete data received: {data}")
             return jsonify({"error": "Missing data"}), 400
 
         current_time = time.time()
@@ -151,22 +149,27 @@ def handle_heartbeat():
                 "timestamp": current_time
             }
         
+        print(f"[HEARTBEAT] Received: Universe={universe_id}, Job={job_id[:8]}..., Players={player_count}", flush=True)
+        
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
-        logging.error(f"Heartbeat: Ошибка при обработке: {e}", exc_info=True)
+        print(f"[HEARTBEAT ERROR] {e}", flush=True)
+        logging.error(f"Heartbeat: Error processing: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
 
-# --- Запуск сервера ---
+# --- Start server ---
 if __name__ == '__main__':
-    # <--- УДАЛЕНО ---
-    # Поток keep_alive() больше не запускается
-    # threading.Thread(target=keep_alive, daemon=True).start()
-    # --- ---
+    print("\n" + "="*50, flush=True)
+    print("[STARTUP] Starting Obsidian Aggregator Service", flush=True)
+    print("="*50 + "\n", flush=True)
+    sys.stdout.flush()
     
-    # Запускаем поток сбора статистики
+    # Start statistics collection thread
     threading.Thread(target=aggregate_and_post_stats, daemon=True).start()
     
-    # Эта переменная окружения (PORT) нужна самому Render, ее убирать нельзя
     port = int(os.environ.get('PORT', 10000))
+    print(f"[STARTUP] Starting Flask on port {port}", flush=True)
+    sys.stdout.flush()
+    
     app.run(host='0.0.0.0', port=port)
